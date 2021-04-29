@@ -1,15 +1,9 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: sock-shop
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: carts-db
   labels:
     name: carts-db
-  namespace: sock-shop
 spec:
   replicas: 1
   selector:
@@ -51,7 +45,6 @@ metadata:
   name: carts-db
   labels:
     name: carts-db
-  namespace: sock-shop
 spec:
   ports:
     # the port that this service should serve on
@@ -66,7 +59,6 @@ metadata:
   name: carts
   labels:
     name: carts
-  namespace: sock-shop
 spec:
   replicas: 1
   selector:
@@ -80,13 +72,17 @@ spec:
       containers:
       - name: carts
         image: weaveworksdemos/carts:0.4.8
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - configMapRef:
+            name: agent-config
         ports:
          - containerPort: 80
         env:
-         - name: ZIPKIN
-           value: zipkin.jaeger.svc.cluster.local
-         - name: JAVA_OPTS
-           value: -Xms64m -Xmx128m -XX:PermSize=32m -XX:MaxPermSize=64m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: service.name = carts
+        - name: JAVA_OPTS
+          value: -Xms64m -Xmx128m -XX:PermSize=32m -XX:MaxPermSize=64m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom
         securityContext:
           runAsNonRoot: true
           runAsUser: 10001
@@ -99,10 +95,25 @@ spec:
         volumeMounts:
         - mountPath: /tmp
           name: tmp-volume
+        - mountPath: /agent
+          name: workdir
+      initContainers:
+      - name: install
+        image: busybox
+        command:
+        - wget
+        - "-O"
+        - "/work-dir/opentelemetry-javaagent-all.jar"
+        - https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v1.0.1/opentelemetry-javaagent-all.jar
+        volumeMounts:
+        - name: workdir
+          mountPath: "/work-dir"
       volumes:
-        - name: tmp-volume
-          emptyDir:
-            medium: Memory
+      - name: workdir
+        emptyDir: {}
+      - name: tmp-volume
+        emptyDir:
+          medium: Memory
       nodeSelector:
         beta.kubernetes.io/os: linux
 ---
@@ -112,7 +123,6 @@ metadata:
   name: carts
   labels:
     name: carts
-  namespace: sock-shop
 spec:
   ports:
     # the port that this service should serve on
@@ -127,7 +137,6 @@ metadata:
   name: catalogue-db
   labels:
     name: catalogue-db
-  namespace: sock-shop
 spec:
   replicas: 1
   selector:
@@ -142,10 +151,10 @@ spec:
       - name: catalogue-db
         image: weaveworksdemos/catalogue-db:0.3.0
         env:
-          - name: MYSQL_ROOT_PASSWORD
-            value: fake_password
-          - name: MYSQL_DATABASE
-            value: socksdb
+        - name: MYSQL_ROOT_PASSWORD
+          value: fake_password
+        - name: MYSQL_DATABASE
+          value: socksdb
         ports:
         - name: mysql
           containerPort: 3306
@@ -158,7 +167,6 @@ metadata:
   name: catalogue-db
   labels:
     name: catalogue-db
-  namespace: sock-shop
 spec:
   ports:
     # the port that this service should serve on
@@ -173,7 +181,6 @@ metadata:
   name: catalogue
   labels:
     name: catalogue
-  namespace: sock-shop
 spec:
   replicas: 1
   selector:
@@ -187,6 +194,7 @@ spec:
       containers:
       - name: catalogue
         image: weaveworksdemos/catalogue:0.3.5
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
         securityContext:
@@ -207,7 +215,6 @@ metadata:
   name: catalogue
   labels:
     name: catalogue
-  namespace: sock-shop
 spec:
   ports:
     # the port that this service should serve on
@@ -220,7 +227,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: front-end
-  namespace: sock-shop
 spec:
   replicas: 1
   selector:
@@ -234,6 +240,7 @@ spec:
       containers:
       - name: front-end
         image: weaveworksdemos/front-end:0.3.12
+        imagePullPolicy: IfNotPresent
         resources:
           requests:
             cpu: 100m
@@ -256,7 +263,6 @@ metadata:
   name: front-end
   labels:
     name: front-end
-  namespace: sock-shop
 spec:
   type: NodePort
   ports:
@@ -272,7 +278,6 @@ metadata:
   name: orders-db
   labels:
     name: orders-db
-  namespace: sock-shop
 spec:
   replicas: 1
   selector:
@@ -314,7 +319,6 @@ metadata:
   name: orders-db
   labels:
     name: orders-db
-  namespace: sock-shop
 spec:
   ports:
     # the port that this service should serve on
@@ -329,7 +333,6 @@ metadata:
   name: orders
   labels:
     name: orders
-  namespace: sock-shop
 spec:
   replicas: 1
   selector:
@@ -343,11 +346,15 @@ spec:
       containers:
       - name: orders
         image: weaveworksdemos/orders:0.4.7
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - configMapRef:
+            name: agent-config
         env:
-         - name: ZIPKIN
-           value: zipkin.jaeger.svc.cluster.local
-         - name: JAVA_OPTS
-           value: -Xms64m -Xmx128m -XX:PermSize=32m -XX:MaxPermSize=64m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: service.name = orders
+        - name: JAVA_OPTS
+          value: -Xms64m -Xmx128m -XX:PermSize=32m -XX:MaxPermSize=64m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom
         ports:
         - containerPort: 80
         securityContext:
@@ -362,10 +369,25 @@ spec:
         volumeMounts:
         - mountPath: /tmp
           name: tmp-volume
+        - mountPath: /agent
+          name: workdir
+      initContainers:
+      - name: install
+        image: busybox
+        command:
+        - wget
+        - "-O"
+        - "/work-dir/opentelemetry-javaagent-all.jar"
+        - https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v1.0.1/opentelemetry-javaagent-all.jar
+        volumeMounts:
+        - name: workdir
+          mountPath: "/work-dir"
       volumes:
-        - name: tmp-volume
-          emptyDir:
-            medium: Memory
+      - name: workdir
+        emptyDir: {}
+      - name: tmp-volume
+        emptyDir:
+          medium: Memory
       nodeSelector:
         beta.kubernetes.io/os: linux
 ---
@@ -375,7 +397,6 @@ metadata:
   name: orders
   labels:
     name: orders
-  namespace: sock-shop
 spec:
   ports:
     # the port that this service should serve on
@@ -390,7 +411,6 @@ metadata:
   name: payment
   labels:
     name: payment
-  namespace: sock-shop
 spec:
   replicas: 1
   selector:
@@ -404,6 +424,7 @@ spec:
       containers:
       - name: payment
         image: weaveworksdemos/payment:0.4.3
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
         securityContext:
@@ -424,7 +445,6 @@ metadata:
   name: payment
   labels:
     name: payment
-  namespace: sock-shop
 spec:
   ports:
     # the port that this service should serve on
@@ -439,7 +459,6 @@ metadata:
   name: queue-master
   labels:
     name: queue-master
-  namespace: sock-shop
 spec:
   replicas: 1
   selector:
@@ -453,6 +472,7 @@ spec:
       containers:
       - name: queue-master
         image: weaveworksdemos/queue-master:0.3.1
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
       nodeSelector:
@@ -466,7 +486,6 @@ metadata:
     name: queue-master
   annotations:
     prometheus.io/path: "/prometheus"
-  namespace: sock-shop
 spec:
   ports:
     # the port that this service should serve on
@@ -481,7 +500,6 @@ metadata:
   name: rabbitmq
   labels:
     name: rabbitmq
-  namespace: sock-shop
 spec:
   replicas: 1
   selector:
@@ -495,6 +513,7 @@ spec:
       containers:
       - name: rabbitmq
         image: rabbitmq:3.6.8
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 5672
         securityContext:
@@ -516,7 +535,6 @@ metadata:
   name: rabbitmq
   labels:
     name: rabbitmq
-  namespace: sock-shop
 spec:
   ports:
     # the port that this service should serve on
@@ -531,7 +549,6 @@ metadata:
   name: shipping
   labels:
     name: shipping
-  namespace: sock-shop
 spec:
   replicas: 1
   selector:
@@ -545,11 +562,15 @@ spec:
       containers:
       - name: shipping
         image: weaveworksdemos/shipping:0.4.8
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - configMapRef:
+            name: agent-config
         env:
-         - name: ZIPKIN
-           value: zipkin.jaeger.svc.cluster.local
-         - name: JAVA_OPTS
-           value: -Xms64m -Xmx128m -XX:PermSize=32m -XX:MaxPermSize=64m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: service.name = shipping
+        - name: JAVA_OPTS
+          value: -Xms64m -Xmx128m -XX:PermSize=32m -XX:MaxPermSize=64m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom
         ports:
         - containerPort: 80
         securityContext:
@@ -564,10 +585,25 @@ spec:
         volumeMounts:
         - mountPath: /tmp
           name: tmp-volume
+        - mountPath: /agent
+          name: workdir
+      initContainers:
+      - name: install
+        image: busybox
+        command:
+        - wget
+        - "-O"
+        - "/work-dir/opentelemetry-javaagent-all.jar"
+        - https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v1.0.1/opentelemetry-javaagent-all.jar
+        volumeMounts:
+        - name: workdir
+          mountPath: "/work-dir"
       volumes:
-        - name: tmp-volume
-          emptyDir:
-            medium: Memory
+      - name: workdir
+        emptyDir: {}
+      - name: tmp-volume
+        emptyDir:
+          medium: Memory
       nodeSelector:
         beta.kubernetes.io/os: linux
 ---
@@ -577,7 +613,6 @@ metadata:
   name: shipping
   labels:
     name: shipping
-  namespace: sock-shop
 spec:
   ports:
     # the port that this service should serve on
@@ -592,7 +627,6 @@ metadata:
   name: user-db
   labels:
     name: user-db
-  namespace: sock-shop
 spec:
   replicas: 1
   selector:
@@ -634,7 +668,6 @@ metadata:
   name: user-db
   labels:
     name: user-db
-  namespace: sock-shop
 spec:
   ports:
     # the port that this service should serve on
@@ -649,7 +682,6 @@ metadata:
   name: user
   labels:
     name: user
-  namespace: sock-shop
 spec:
   replicas: 1
   selector:
@@ -663,6 +695,7 @@ spec:
       containers:
       - name: user
         image: weaveworksdemos/user:0.4.7
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
         env:
@@ -686,7 +719,6 @@ metadata:
   name: user
   labels:
     name: user
-  namespace: sock-shop
 spec:
   ports:
     # the port that this service should serve on
